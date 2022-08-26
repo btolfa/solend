@@ -29,9 +29,6 @@ use solana_program::{
 use spl_token::solana_program::instruction::AccountMeta;
 use spl_token::state::{Account, Mint};
 use std::{cmp::min, convert::TryInto, result::Result};
-use switchboard_program::{
-    get_aggregator, get_aggregator_result, AggregatorState, RoundResult, SwitchboardAccountType,
-};
 use switchboard_v2::AggregatorAccountData;
 
 /// Mainnet program id for Switchboard v2.
@@ -2426,48 +2423,16 @@ fn get_switchboard_price(
     switchboard_feed_info: &AccountInfo,
     clock: &Clock,
 ) -> Result<Decimal, ProgramError> {
-    const STALE_AFTER_SLOTS_ELAPSED: u64 = 240;
-
     if *switchboard_feed_info.key == solend_program::NULL_PUBKEY {
         return Err(LendingError::NullOracleConfig.into());
     }
-    if switchboard_feed_info.owner == &switchboard_v2_mainnet::id()
-        || switchboard_feed_info.owner == &switchboard_v2_devnet::id()
+    if !(switchboard_feed_info.owner == &switchboard_v2_mainnet::id()
+        || switchboard_feed_info.owner == &switchboard_v2_devnet::id())
     {
-        return get_switchboard_price_v2(switchboard_feed_info, clock);
-    }
-
-    let account_buf = switchboard_feed_info.try_borrow_data()?;
-    // first byte type discriminator
-    if account_buf[0] != SwitchboardAccountType::TYPE_AGGREGATOR as u8 {
-        msg!("switchboard address not of type aggregator");
-        return Err(LendingError::InvalidAccountInput.into());
-    }
-
-    let aggregator: AggregatorState = get_aggregator(switchboard_feed_info)?;
-    // if aggregator.version != 1 {
-    //     msg!("switchboard version incorrect");
-    //     return Err(LendingError::InvalidAccountInput.into());
-    // }
-    let round_result: RoundResult = get_aggregator_result(&aggregator)?;
-
-    let slots_elapsed = clock
-        .slot
-        .checked_sub(round_result.round_open_slot.unwrap())
-        .ok_or(LendingError::MathOverflow)?;
-    if slots_elapsed >= STALE_AFTER_SLOTS_ELAPSED {
-        msg!("Switchboard oracle price is stale");
         return Err(LendingError::InvalidOracleConfig.into());
     }
 
-    let price_float = round_result.result.unwrap_or(0.0);
-
-    // we just do this so we can parse coins with low usd value
-    // it might be better to just extract the mantissa and exponent from the float directly
-    let price_quotient = 10u64.pow(9);
-    let price = ((price_quotient as f64) * price_float) as u128;
-
-    Decimal::from(price).try_div(price_quotient)
+    get_switchboard_price_v2(switchboard_feed_info, clock)
 }
 
 fn get_switchboard_price_v2(
