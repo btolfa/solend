@@ -3,6 +3,7 @@ members = [
   "token-lending/cli",
   "token-lending/program",
 ]
+resolver = "2"
 
 [profile.dev]
 split-debuginfo = "unpacked"
